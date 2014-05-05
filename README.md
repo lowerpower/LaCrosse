@@ -59,27 +59,39 @@ Each request has a corresponding return code placed in the HTTP_FLAGS header, an
 Packets
 -------
 00:01 - Gateway Power up Packet (when gateway is unregistered), reply with empty message (HTTP_FLAGS: 10:00)
+
 00:10 -
+
 00:20 - Gateway Unregistered Push Button Packet, you can respond to this message with a gateway config response (HTTP_FLAGS: 20:00)
+
 00:30 - Gateway finished registering packet, respond with (HTTP_FLAGS: 30:00)
+
 00:70 - Gateway Ping Packet (nothing to do with weather station, just keeps the gateway happy)
+
 01:00 - Weather Station Ping.  Sets time, lights internet light on station  -- Reply with header(HTTP_FLAGS: 14:01)
+
 01:01 - Weather Station Data packet, this contains the weather station data.
+
 01:14 - Weather Station Registrion verification packet
+
 7F:10 - Weather Station Registration Packet
+
 00:14 - 
 
 
 Data Packet layout
 ------------------
+
 The data is sent from the gateway as post data in a 01:01 record.  The records are 197 bytes, although users have reported
 other sized packets too. That will need investigation
 The layout of the 197-byte record is as follows. Start and end byte numbers end with H or L to indicate which nybble the 
 field starts or ends with. H or L indicate the high-order or low-order nybble. The length is given in nybbles, not bytes.
-----------------------------------
+
+___________________________________
     |Strt|Len in|
 Strt|nyb |nybble|Encoding |Function
-----------------------------------
+___________________________________
+
 00H   0    2      byte     Record type, always 01
 01H   2    4      ???      Unknown
 03H   6    3      byte     status?
