@@ -146,6 +146,7 @@ c0H   180  6      ???      Unknown
 c3H   186  2      binary   Checksum1
 c4H   188  2      binary   Checksum2 May be one 16-bit checksum
 
+
 Data Field Notes:
 1. Date/Time fields are BCD spanning 10 nybbles. It starts with the 2-digit 
    year (without century), then 2-digit month, then 2-digit day, then 2-digit 
