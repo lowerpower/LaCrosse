@@ -229,7 +229,6 @@ $debug_packets=0;                                    // Set if you want to write
 $wug_pw  ="";                             // WU user password
 $wug_sid="";                              // WU station ID (leave blank to not use wu upload)
 
-
 //
 // Weather Undergrond Needs UTC in encoded mysql format.
 //
@@ -1262,4 +1261,4 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 
 echo("$reply");
 
-?>
+
