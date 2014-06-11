@@ -3,7 +3,7 @@
 
 @author mike |at| mycal.net
 
-Lacrosse Weather Station Server. this is expermental code to enable registering a Lacrosse Technologies GW-1000U gateway
+Lacrosse Weather Station Server (phpLaxbro). this is expermental code to enable registering a Lacrosse Technologies GW-1000U gateway
 and a Lacrosse Technologies C84612 wether station.  Because of the great work on this software by karlc@keckec.com
 and the information provided by Skydiver, this software will now decode the weather data from the C84612 weather station.
 I've just added using this data to upload to weather underground, see below for configuration.
@@ -229,6 +229,7 @@ $debug_packets=0;                                    // Set if you want to write
 $wug_pw  ="";                             // WU user password
 $wug_sid="";                              // WU station ID (leave blank to not use wu upload)
 
+
 //
 // Weather Undergrond Needs UTC in encoded mysql format.
 //
@@ -240,7 +241,7 @@ date_default_timezone_set($timezone);
 //
 // Weather Underground URL/URI settings
 //
-$wug_access_type="http://";                             // You can use https:// it seems, probably better
+$wug_access_type="http://";                             // You can use "https://" it is likely better, if you rapid fire maybe not
 $wug_weather_host="weatherstation.wunderground.com";
 $wug_weather_uri="/weatherstation/updateweatherstation.php?action=updateraw&ID=$wug_sid&PASSWORD=$wug_pw&dateutc=$mysqltime";
 $wug_req="$wug_access_type$wug_weather_host$wug_weather_uri";
@@ -284,8 +285,8 @@ function WU_put($uri_data)
 {
     global $wug_req,$wug_sid;
 
-
-file_put_contents("php.log","write weatehr underground : $uri_data\n\n",FILE_APPEND);
+    // We log very push to php.log, probably can be removed
+    file_put_contents("php.log","write weatehr underground : $uri_data\n\n",FILE_APPEND);
 
     if(strlen($wug_sid))
     {
@@ -1162,7 +1163,8 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			$outstr.="1hr: ".rf2str($nybs,          0x0fa,6)." "; // Last 24h rain
 			$uri   .="&rainin=".rf2str($nybs,       0x0fa,6);
 			$outstr.="24hr: ".rf2str($nybs,         0x0e4,6)." "; // Last 24h rain
-			$outstr.="Week: ".rf2str($nybs,         0x0ce,6)." "; // Previous Week's rain
+			$uri   .="&dailyrainin=".rf2str($nybs,  0x0e4,6);     // Probably not what WU wants, they want daily,  this is 24hrs
+      $outstr.="Week: ".rf2str($nybs,         0x0ce,6)." "; // Previous Week's rain
 			$outstr.="Month: ".rf2str($nybs,        0x0b8,7)." "; // Previous month's rain
 			$outstr.="Since Reset: ".rf2str($nybs,  0x10b,7)." "; // Rain since last reset
 			$outstr.="Reset: ".dat2str($nybs,       0x101)." ";   // Date/Time of Last Rain Reset
@@ -1199,6 +1201,7 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			//
 			// Send to weather underground  (must have parameters set up tom)
 			//
+      $uri.="&softwaretype=phpLaxbro";
       WU_put($uri);
 			
 			// Log a hex dump of 
