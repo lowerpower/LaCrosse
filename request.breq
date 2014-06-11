@@ -1,17 +1,20 @@
 <?php
-/* 
-@author mike |at| mycal.net
-@author karlc |at| keckec.com
+/* vim: set expandtab tabstop=4 shiftwidth=4 softtabstop=4 foldmethod=marker: 
 
-Weather Station Server. this is expermental code to enable registering a Lacrosse Technologies GW-1000U gateway
-and a Lacrosse Technologies C84612 wether station.  At some point it will be extended to process weather data
-and store it or push it to an external service like wx weather.  At this poit it only does registration and is a work in progess.
+@author mike |at| mycal.net
+
+Lacrosse Weather Station Server. this is expermental code to enable registering a Lacrosse Technologies GW-1000U gateway
+and a Lacrosse Technologies C84612 wether station.  Because of the great work on this software by karlc@keckec.com
+and the information provided by Skydiver, this software will now decode the weather data from the C84612 weather station.
+I've just added using this data to upload to weather underground, see below for configuration.
+
+My weather station using this software is here http://www.wunderground.com/personal-weather-station/dashboard?ID=KCAPETAL29
 
 You should read this thread on the wxfourm about this and skydivers windows software:
 http://www.wxforum.net/index.php?topic=14299.75
 
-The idea behind this code as oppsed dto skydivers great software, it it could be adapted to a home router using DDWRT or hosted
-on a cheap host that supports PHP.
+The idea behind this code as oppsed to skydivers great software, it it could be adapted to a home router using DDWRT or hosted
+on a cheap host that supports PHP.  Much of the data decoding derived from skydiver's investigation and from karlc work on this file. 
 
 All doucmentation is here in this single file.
 
@@ -184,14 +187,26 @@ one if reregistered), and once this is replied to the weather station is registe
 The weather station will then send  01:01 data packets and 01:00 ping packets to the service.  The ping packets must be responded
 to correctly to keep the "internet" indicator up and to keep the weather station "registered" over the long term.
 
+Other Info
+----------
+Pressing the RAIN button until beep on a registered weather station fluses out data packets from the weather station.
+
 To Investigate
 ---------------
 I think on the lacrosse alerts website you can change the rate of data packets, we should change this setting and see
 what happens in these packets.   I thought at one point I could change this, but I've lost that data.
 
-Lastly
-------
-Pressing the RAIN button until beep on a registered weather station fluses out data packets from the weather station.
+Weather Underground Upload
+---------------------------
+Below you can set $wug_pw to your weather underground password and $wug_sid to your weather station ID, and when a 197 bytes data packet is received
+it will upload it to weather underground.
+
+
+To Do
+-----
+karlc@keckec.com and Skydiver have done some great work on getting the 'Epoch' value set so the weather server is not so chatty, and basically to 
+keep it happy, this has not been added.   Things like update rate have not been added.
+
 
 */
 
@@ -199,13 +214,39 @@ Pressing the RAIN button until beep on a registered weather station fluses out d
 //----------------------------------------------------------------------------------------------------------
 // Configuration, customize for your situation
 //----------------------------------------------------------------------------------------------------------
-date_default_timezone_set('America/Los_Angeles');   // We use this to set the correct time on your weather station
+$timezone="America/Los_Angeles";                    // We use this to set the correct time on your weather station
 $station_serial=pack("H*" , "7FFF000000000000");    // Set your station serial number here
-//$station_serial=pack("H*" , "914C428A9FD46E58");    // keckec serial number This is wrong!!!!
-//$station_serial=pack("H*" , "7fff14763c3b5b61");    // keckec serial number apparently something else, this one is seen 
 $register_this_serial=0;                            // Warning, read the code before setting this to 1, will set to above sn
                                                     // if a weather station with default serial number attaches, you probably
                                                     // do not want to do this.
+
+// Turn on/off debug packets
+$debug_packets=0;                                    // Set if you want to write debug packets out to files
+
+//
+// Weather Underground Settings  (this assumes only one ws handled by this file)
+//
+$wug_pw  ="";                             // WU user password
+$wug_sid="";                              // WU station ID (leave blank to not use wu upload)
+
+
+//
+// Weather Undergrond Needs UTC in encoded mysql format.
+//
+date_default_timezone_set('UTC');
+$mysqltime = date ("Y-m-d H:i:s");
+$mysqltime=rawurlencode($mysqltime);
+date_default_timezone_set($timezone);
+
+//
+// Weather Underground URL/URI settings
+//
+$wug_access_type="http://";                             // You can use https:// it seems, probably better
+$wug_weather_host="weatherstation.wunderground.com";
+$wug_weather_uri="/weatherstation/updateweatherstation.php?action=updateraw&ID=$wug_sid&PASSWORD=$wug_pw&dateutc=$mysqltime";
+$wug_req="$wug_access_type$wug_weather_host$wug_weather_uri";
+
+
 
 // The unknown entities is an array of arrays. The inner arrays
 //  each have 2 elements -- first is the starting nybble in the post data
@@ -238,10 +279,75 @@ $unknown_entities = array(
 );
 
 //
+// Weather Underground push data function
+//
+function WU_put($uri_data)
+{
+    global $wug_req,$wug_sid;
+
+
+file_put_contents("php.log","write weatehr underground : $uri_data\n\n",FILE_APPEND);
+
+    if(strlen($wug_sid))
+    {
+        if($handle = fopen("$wug_req$uri_data", "r"))
+        {
+            $buffer=fread($handle, 1024);
+
+            fclose($handle);
+
+            //echo "\n$buffer\n";
+        }
+        else
+        {
+            // Failed
+        }
+    }
+}
+
+/**  (stolen form weather services http://pear.php.net/manual/en/package.webservices.services-weather.services-weather-common-summary.php)
+  * Calculate dewpoint from temperature and humidity
+  * This is only an approximation, there is no exact formula, this
+  * one here is called Magnus-Formula
+  *
+  * Temperature has to be entered in deg C!
+  *
+  * @param   float                       $temperature
+  * @param   float                       $humidity
+  * @return  float
+  * @access  public
+  * @link    http://www.faqs.org/faqs/meteorology/temp-dewpoint/
+  */
+function calculateDewPoint($temperature, $humidity)
+{
+    if ($temperature >= 0) {
+        $a = 7.5;
+        $b = 237.3;
+    } else {
+        $a = 7.6;
+        $b = 240.7;
+    }
+
+    // First calculate saturation steam pressure for temperature
+    $SSP = 6.1078 * pow(10, ($a * $temperature) / ($b + $temperature));
+
+    // Steam pressure
+    $SP  = $humidity / 100 * $SSP;
+
+    $v   = log($SP / 6.1078, 10);
+
+    return ($b * $v / ($a - $v));
+}
+
+
+//
 // Writes the given string to the data log file: php.log
 //
 function write_data_log($outstr)
 {
+    global $debug_packets;
+
+    if($debug_packets)
 	file_put_contents("php.log",$outstr,FILE_APPEND);
 }
 
@@ -250,6 +356,9 @@ function write_data_log($outstr)
 //
 function write_bdc_log($outstr)
 {
+    global $debug_packets;
+
+    if($debug_packets)
 	file_put_contents("bcd.log",$outstr,FILE_APPEND);
 }
 
@@ -258,6 +367,8 @@ function write_bdc_log($outstr)
 //
 function write_dump_log($data,$type)
 {
+    global $debug_packets;
+	
 	$outstr=date('Y-m-d H:i:s')."   Packet Type ".$type;
 	$outstr.= sprintf(" Length: %d bytes\n",strlen($data));
 	if(strlen($data))
@@ -266,6 +377,8 @@ function write_dump_log($data,$type)
 	} else {
 		$outstr .= "     No Data\n";
 	}
+
+    if($debug_packets)
 	file_put_contents("dump.log",$outstr,FILE_APPEND);
 }
 
@@ -426,7 +539,7 @@ function rf2str(&$nybs,$startn,$len)
 	$rf = bcd2int($nybs,$startn,$len);
 	$rf /= ($len == 6) ? 100.0 : 1000.0;
 	$rf *= 0.0391904; // 0.0393701 is nominal
-	return sprintf("%.2f",$rf);
+	return trim(sprintf("%.2f",$rf));
 }
 
 //
@@ -440,7 +553,7 @@ function ws2str(&$nybs,$startn)
 	// Windspeed is a two-byte value, high-byte first
 	$ws = bin2int($nybs,$startn,4);
 	$ws /= 161.9;
-	return sprintf("%5.2f",$ws);
+	return trim(sprintf("%5.2f",$ws));
 }
 
 //
@@ -464,6 +577,16 @@ function wd2str(&$nybs,$startn)
 	$retstr .= $compass[$nybs[$startn+5]]; // History 5
 	return $retstr;
 }
+
+//
+// currentWind - returns the current wind direction in degrees
+//
+function currentWind(&$nybs,$startn)
+{
+    // get the current wind direction in degrees
+   return($nybs[$startn]*22.5);
+}
+
 
 //
 // dat2str converts nybbles into a date, formatted
@@ -511,7 +634,7 @@ function temp2str(&$nybs,$startn)
 	$otemp = bcd2int($nybs,$startn,3) / 10.0 - 40.0;
 	$otemp = $otemp * 9.0 / 5 + 32.0;
 	$retstr .= sprintf("%6.2f",$otemp);
-	return $retstr;
+	return trim($retstr);
 }
 
 //
@@ -990,26 +1113,33 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			//$outstr.="{$slen} bytes "; // String length
 			// Temperatures are formatted to accommodate 100+ degrees, so 
 			//  we don't put a space after the colon
+			$uri    ="";
 			$outstr.="\n";
 			$outstr.=" Outdoor: ";
 			$outstr.="Temp:".temp2str($nybs,        0x04b)." ";   // byte 25 lower nybble
+			$uri   .="&tempf=".temp2str($nybs,      0x04b);       //***
 			$outstr.="Max:".temp2str($nybs,         0x041)." ";   // byte 20, lower nybble
 			$outstr.=dat2str($nybs,                 0x02d)." ";   // Max Outside Temp Time byte 0x16 lower nybble
 			$outstr.="Min:".temp2str($nybs,         0x046)." ";   // byte 23 high nybble
 			$outstr.=dat2str($nybs,                 0x037)." ";   // Min Outside Temp Time byte 1b lower nybble
-			$outstr.="Humidity: ".hum2str($nybs,    0x0a6)." ";   // byte 53 higher nybble
+      $outstr.="Humidity: ".hum2str($nybs,    0x0a6)." ";   // byte 53 higher nybble
+      $uri   .="&humidity=".hum2str($nybs,    0x0a6);	
+      // Calc and send Dew Point
+      $uri   .="&dewptf=".calculateDewPoint(temp2str($nybs,0x04b), hum2str($nybs,0x0a6));
 			$outstr.="Max:".hum2str($nybs,          0x0a2)." ";   // byte 51 higher nybble
 			$outstr.=dat2str($nybs,                 0x08e)." ";   // Max Outside Humidity Time byte 47 higher nybble
 			$outstr.="Min:".hum2str($nybs,          0x0a4)." ";   // byte 52 higher nybble
 			$outstr.=dat2str($nybs,                 0x098)." ";   // Min Outside Humidity Time byte 4c higher nybble
 			$outstr.="\n ";
 			$outstr.=" Indoor: ";
+			$uri   .="&indoortempf=".temp2str($nybs,0x027);
 			$outstr.="Temp:".temp2str($nybs,        0x027)." ";   // byte 13 lower nybble
 			$outstr.="Max:".temp2str($nybs,         0x01d)." ";   // byte 0e lower nybble
 			$outstr.=dat2str($nybs,                 0x009)." ";   // Max Inside Temp Time byte 04 lower nybble
 			$outstr.="Min:".temp2str($nybs,         0x022)." ";   // byte 72 higher nybble
 			$outstr.=dat2str($nybs,                 0x013)." ";   // Min Inside Temp Time byte 09 lower nybble
 			$outstr.="Humidity: ".hum2str($nybs,    0x08c)." ";   // byte 46 higher nybble
+			$uri   .="&indoorhumidity=".hum2str($nybs,0x08c);
 			$outstr.="Max:".hum2str($nybs,          0x088)." ";   // byte 44 higher nybble
 			$outstr.=dat2str($nybs,                 0x074)." ";   // Max Inside Humidity Time byte 3a higher nybble
 			$outstr.="Min:".hum2str($nybs,          0x08a)." ";   // byte 45 higher nybble
@@ -1017,16 +1147,21 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			//$outstr.="OutTemp2:".temp2str($nybs,  0x06f)." ";   // byte 37 lower nybble
 			$outstr.="\n ";
 			$outstr.="Windsp:".ws2str($nybs,        0x122)." ";   // Current ave wind speed
+			$uri   .="&windspeedmph=".ws2str($nybs, 0x122);
 			$outstr.="Gust:".ws2str($nybs,          0x140)." ";   // Max Wind Gust in last cycle
+			$uri   .="&windgustmph=".ws2str($nybs,  0x140);
 			$outstr.="Max Gust:".ws2str($nybs,      0x13a)." ";   // Max Wind Gust since reset
 			$outstr.="Max Gust Time:".dat2str($nybs,0x130)." ";   // Time/Date of Max Wind Gust
 			$outstr.="WindDir: ".wd2str($nybs,      0x12a)." ";   // Wind Direction History Array
+			$uri   .="&winddir=".currentWind($nybs, 0x12a);
 			$outstr.="Barometer: ".baro2str($nybs,  0x14f)." ";   // Current barometer
+			$uri   .="&baromin=".baro2str($nybs,    0x14f);
 			$outstr.="Min: ".baro2str($nybs,        0x159)." ";   // Min Barometer
 			$outstr.="Max: ".baro2str($nybs,        0x163)." ";   // Max Barometer
 			$outstr.="\n ";
 			$outstr.="Rain: ";
 			$outstr.="1hr: ".rf2str($nybs,          0x0fa,6)." "; // Last 24h rain
+			$uri   .="&rainin=".rf2str($nybs,       0x0fa,6);
 			$outstr.="24hr: ".rf2str($nybs,         0x0e4,6)." "; // Last 24h rain
 			$outstr.="Week: ".rf2str($nybs,         0x0ce,6)." "; // Previous Week's rain
 			$outstr.="Month: ".rf2str($nybs,        0x0b8,7)." "; // Previous month's rain
@@ -1062,7 +1197,10 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			// Log BCD data to a file
 			$outstr.= "\n".dump_unknown($postdata);
 			write_data_log($outstr);
-
+			//
+			// Send to weather underground  (must have parameters set up tom)
+			//
+      WU_put($uri);
 			
 			// Log a hex dump of 
 			write_dump_log($postdata,"01:01");
@@ -1072,7 +1210,8 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			//  record will be 201 bytes..
 			$packtime = pack("l",time());
 			// For now, down't include the time...
-			file_put_contents("postdata197.bin",$packtime.$postdata,FILE_APPEND);
+			if($debug_packets)
+			    file_put_contents("postdata197.bin",$packtime.$postdata,FILE_APPEND);
 			// We should checksum the packet here before decode.  I believe that the checksum is generated by the 
 			// weather station before it is sent over the wireless link. So the packet can be corrupted,  so far I have not
 			// figured out the checksum though, so we just decode it if 197 bytes
@@ -1088,7 +1227,8 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			// And write a binary file of the data, named according to postdata length
 			$filename = "postdata".sprintf("%d",strlen($postdata)).".bin";
 			$packtime = pack("l",time());
-			file_put_contents($filename,$packtime.$postdata,FILE_APPEND);
+			if($debug_packets)
+			    file_put_contents($filename,$packtime.$postdata,FILE_APPEND);
 			# For the 210-byte (data history?) packets, don't reply with the content-type header
 			if (strlen($postdata) == 210)
 			{
