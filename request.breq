@@ -201,11 +201,16 @@ Weather Underground Upload
 Below you can set $wug_pw to your weather underground password and $wug_sid to your weather station ID, and when a 197 bytes data packet is received
 it will upload it to weather underground.
 
+Setting $wu_send_indoor_values to non zero below will send indoor values to WU, at this time I see no reason to do this.
+
+
 
 To Do
 -----
 karlc@keckec.com and Skydiver have done some great work on getting the 'Epoch' value set so the weather server is not so chatty, and basically to 
 keep it happy, this has not been added.   Things like update rate have not been added.
+
+There is no reason why this cannot handle multiple weather stations in the cloud or store weater data in local db.
 
 
 */
@@ -226,9 +231,11 @@ $debug_packets=0;                                    // Set if you want to write
 //
 // Weather Underground Settings  (this assumes only one ws handled by this file)
 //
-$wug_pw  ="";                             // WU user password
-$wug_sid="";                              // WU station ID (leave blank to not use wu upload)
+//$wug_pw  ="";                             // WU user password
+//$wug_sid="";                              // WU station ID (leave blank to not use wu upload)
 
+
+$wug_send_indoor_values=0;                  // Set to non zero to send indoor valuues to weather underground.
 
 //
 // Weather Undergrond Needs UTC in encoded mysql format.
@@ -286,8 +293,8 @@ function WU_put($uri_data)
     global $wug_req,$wug_sid;
 
     // We log very push to php.log, probably can be removed
-    file_put_contents("php.log","write weatehr underground : $uri_data\n\n",FILE_APPEND);
-
+    file_put_contents("php.log","write weatehr underground : $uri_data\n",FILE_APPEND);
+    
     if(strlen($wug_sid))
     {
         if($handle = fopen("$wug_req$uri_data", "r"))
@@ -297,6 +304,7 @@ function WU_put($uri_data)
             fclose($handle);
 
             //echo "\n$buffer\n";
+            file_put_contents("php.log","returned : $buffer\n\n",FILE_APPEND);
         }
         else
         {
@@ -336,7 +344,7 @@ function calculateDewPoint($temperature, $humidity)
 
     $v   = log($SP / 6.1078, 10);
 
-    return ($b * $v / ($a - $v));
+    return round( ($b * $v / ($a - $v)), 2 );
 }
 
 
@@ -585,6 +593,64 @@ function currentWind(&$nybs,$startn)
 {
     // get the current wind direction in degrees
    return($nybs[$startn]*22.5);
+}
+
+
+//
+// Average 2 wind values
+//
+function avgWind2val($a,$b)
+{
+
+    // Find the mid point
+    $avg=($a+$b)/2;
+    
+    // Is the delta > 180?  If so mid point is on the long segment, so add 180 to get it to the short segment
+    if(abs($b-$a)>180)
+        $avg=$avg+180;
+
+    // base 360
+    $avg=$avg%360;
+    
+    return($avg);
+
+}
+
+//
+// avgWind - returns the Average of the last 2 wind directions (experimental)
+//
+function avgWind(&$nybs,$startn)
+{
+    return(avgWind2val($nybs[$startn]*22.5,$nybs[$startn+1]*22.5));
+}
+
+
+//
+// avgWind - returns the Average of the last 5 wind directions (experimental)
+//
+function avgWind2(&$nybs,$startn)
+{
+    for($i=0;$i<4;$i++)
+    {
+        $avg[$i]=avgWind2val($nybs[$startn+$i]*22.5,$nybs[$startn+$i+1]*22.5);
+    }
+
+
+    for($i=0;$i<3;$i++)
+    {
+        $avg[$i]=avgWind2val($avg[$i],$avg[$i+1]);
+    }
+
+    for($i=0;$i<2;$i++)
+    {
+        $avg[$i]=avgWind2val($avg[$i],$avg[$i+1]);
+    }
+
+
+
+    return(avgWind2val($avg[0],$avg[1]));
+
+
 }
 
 
@@ -1113,33 +1179,35 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			//$outstr.="{$slen} bytes "; // String length
 			// Temperatures are formatted to accommodate 100+ degrees, so 
 			//  we don't put a space after the colon
-			$uri    ="";
+		$uri    ="";
 			$outstr.="\n";
 			$outstr.=" Outdoor: ";
 			$outstr.="Temp:".temp2str($nybs,        0x04b)." ";   // byte 25 lower nybble
-			$uri   .="&tempf=".temp2str($nybs,      0x04b);       //***
+		$uri   .="&tempf=".temp2str($nybs,      0x04b);       //***
 			$outstr.="Max:".temp2str($nybs,         0x041)." ";   // byte 20, lower nybble
 			$outstr.=dat2str($nybs,                 0x02d)." ";   // Max Outside Temp Time byte 0x16 lower nybble
 			$outstr.="Min:".temp2str($nybs,         0x046)." ";   // byte 23 high nybble
 			$outstr.=dat2str($nybs,                 0x037)." ";   // Min Outside Temp Time byte 1b lower nybble
-      $outstr.="Humidity: ".hum2str($nybs,    0x0a6)." ";   // byte 53 higher nybble
-      $uri   .="&humidity=".hum2str($nybs,    0x0a6);	
-      // Calc and send Dew Point
-      $uri   .="&dewptf=".calculateDewPoint(temp2str($nybs,0x04b), hum2str($nybs,0x0a6));
+            $outstr.="Humidity: ".hum2str($nybs,    0x0a6)." ";   // byte 53 higher nybble
+        $uri   .="&humidity=".hum2str($nybs,    0x0a6);	
+        // Calc and send Dew Point
+        $uri   .="&dewptf=".calculateDewPoint(temp2str($nybs,0x04b), hum2str($nybs,0x0a6));
 			$outstr.="Max:".hum2str($nybs,          0x0a2)." ";   // byte 51 higher nybble
 			$outstr.=dat2str($nybs,                 0x08e)." ";   // Max Outside Humidity Time byte 47 higher nybble
 			$outstr.="Min:".hum2str($nybs,          0x0a4)." ";   // byte 52 higher nybble
 			$outstr.=dat2str($nybs,                 0x098)." ";   // Min Outside Humidity Time byte 4c higher nybble
 			$outstr.="\n ";
 			$outstr.=" Indoor: ";
-			$uri   .="&indoortempf=".temp2str($nybs,0x027);
+        if($wug_send_indoor_values)		
+          $uri   .="&indoortempf=".temp2str($nybs,0x027);
 			$outstr.="Temp:".temp2str($nybs,        0x027)." ";   // byte 13 lower nybble
 			$outstr.="Max:".temp2str($nybs,         0x01d)." ";   // byte 0e lower nybble
 			$outstr.=dat2str($nybs,                 0x009)." ";   // Max Inside Temp Time byte 04 lower nybble
 			$outstr.="Min:".temp2str($nybs,         0x022)." ";   // byte 72 higher nybble
 			$outstr.=dat2str($nybs,                 0x013)." ";   // Min Inside Temp Time byte 09 lower nybble
 			$outstr.="Humidity: ".hum2str($nybs,    0x08c)." ";   // byte 46 higher nybble
-			$uri   .="&indoorhumidity=".hum2str($nybs,0x08c);
+		if($wug_send_indoor_values)
+          $uri   .="&indoorhumidity=".hum2str($nybs,0x08c);
 			$outstr.="Max:".hum2str($nybs,          0x088)." ";   // byte 44 higher nybble
 			$outstr.=dat2str($nybs,                 0x074)." ";   // Max Inside Humidity Time byte 3a higher nybble
 			$outstr.="Min:".hum2str($nybs,          0x08a)." ";   // byte 45 higher nybble
@@ -1147,24 +1215,25 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			//$outstr.="OutTemp2:".temp2str($nybs,  0x06f)." ";   // byte 37 lower nybble
 			$outstr.="\n ";
 			$outstr.="Windsp:".ws2str($nybs,        0x122)." ";   // Current ave wind speed
-			$uri   .="&windspeedmph=".ws2str($nybs, 0x122);
+		$uri   .="&windspeedmph=".ws2str($nybs, 0x122);
 			$outstr.="Gust:".ws2str($nybs,          0x140)." ";   // Max Wind Gust in last cycle
-			$uri   .="&windgustmph=".ws2str($nybs,  0x140);
+		$uri   .="&windgustmph=".ws2str($nybs,  0x140);
 			$outstr.="Max Gust:".ws2str($nybs,      0x13a)." ";   // Max Wind Gust since reset
 			$outstr.="Max Gust Time:".dat2str($nybs,0x130)." ";   // Time/Date of Max Wind Gust
 			$outstr.="WindDir: ".wd2str($nybs,      0x12a)." ";   // Wind Direction History Array
-			$uri   .="&winddir=".currentWind($nybs, 0x12a);
+		//$uri   .="&winddir=".currentWind($nybs, 0x12a);
+		$uri   .="&winddir=".avgWind2($nybs, 0x12a);
 			$outstr.="Barometer: ".baro2str($nybs,  0x14f)." ";   // Current barometer
-			$uri   .="&baromin=".baro2str($nybs,    0x14f);
+		$uri   .="&baromin=".baro2str($nybs,    0x14f);
 			$outstr.="Min: ".baro2str($nybs,        0x159)." ";   // Min Barometer
 			$outstr.="Max: ".baro2str($nybs,        0x163)." ";   // Max Barometer
 			$outstr.="\n ";
 			$outstr.="Rain: ";
 			$outstr.="1hr: ".rf2str($nybs,          0x0fa,6)." "; // Last 24h rain
-			$uri   .="&rainin=".rf2str($nybs,       0x0fa,6);
+		$uri   .="&rainin=".rf2str($nybs,       0x0fa,6);
 			$outstr.="24hr: ".rf2str($nybs,         0x0e4,6)." "; // Last 24h rain
-			$uri   .="&dailyrainin=".rf2str($nybs,  0x0e4,6);     // Probably not what WU wants, they want daily,  this is 24hrs
-      $outstr.="Week: ".rf2str($nybs,         0x0ce,6)." "; // Previous Week's rain
+		$uri   .="&dailyrainin=".rf2str($nybs,  0x0e4,6);     // Probably not what WU wants, they want daily,  this is 24hrs
+            $outstr.="Week: ".rf2str($nybs,         0x0ce,6)." "; // Previous Week's rain
 			$outstr.="Month: ".rf2str($nybs,        0x0b8,7)." "; // Previous month's rain
 			$outstr.="Since Reset: ".rf2str($nybs,  0x10b,7)." "; // Rain since last reset
 			$outstr.="Reset: ".dat2str($nybs,       0x101)." ";   // Date/Time of Last Rain Reset
@@ -1198,11 +1267,11 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 			// Log BCD data to a file
 			$outstr.= "\n".dump_unknown($postdata);
 			write_data_log($outstr);
-			//
-			// Send to weather underground  (must have parameters set up tom)
-			//
-      $uri.="&softwaretype=phpLaxbro";
-      WU_put($uri);
+		//
+		// Send to weather underground  (must have parameters set up tom)
+		//
+        $uri.="&softwaretype=phpLaxWeatherBro";
+        WU_put($uri);
 			
 			// Log a hex dump of 
 			write_dump_log($postdata,"01:01");
