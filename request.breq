@@ -6,43 +6,46 @@ vim: set expandtab tabstop=4 shiftwidth=4 softtabstop=4 foldmethod=marker ft=php
 */
 
 
-//----------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 // Configuration, customize for your situation
-//----------------------------------------------------------------------------------------------------------
-$timezone="America/Los_Angeles";                    // We use this to set the correct time on your weather station
-$station_serial=pack("H*" , "7FFF000000000000");    // Set your station serial number here
-$register_this_serial=0;                            // Warning, read the code before setting this to 1, will set to above sn
-                                                    // if a weather station with default serial number attaches, you probably
-                                                    // do not want to do this.
+//-----------------------------------------------------------------------------
+// We use this to set the correct time on your weather station
+$timezone = "America/Los_Angeles";
+// Set your station serial number here
+$station_serial = pack("H*" , "7FFF000000000000");
+
+// Warning, read the code before setting this to 1, will set to above sn
+// if a weather station with default serial number attaches, you probably
+// do not want to do this.
+$register_this_serial = 0;
 
 // Turn on/off debug packets
-$debug_packets=0;                                    // Set if you want to write debug packets out to files
+// Set if you want to write debug packets out to files
+$debug_packets = 0;
 
-//
 // Weather Underground Settings  (this assumes only one ws handled by this file)
-//
-//$wug_pw  ="";                             // WU user password
-//$wug_sid="";                              // WU station ID (leave blank to not use wu upload)
+//$wug_pw = "";  // WU user password
+//$wug_sid = ""; // WU station ID (leave blank to not use wu upload)
+
+// Set to non zero to send indoor valuues to weather underground.
+$wug_send_indoor_values = 0;
+//-----------------------------------------------------------------------------
+// End configuration
+//-----------------------------------------------------------------------------
 
 
-$wug_send_indoor_values=0;                  // Set to non zero to send indoor valuues to weather underground.
-
-//
 // Weather Undergrond Needs UTC in encoded mysql format.
-//
 date_default_timezone_set('UTC');
 $mysqltime = date ("Y-m-d H:i:s");
 $mysqltime=rawurlencode($mysqltime);
 date_default_timezone_set($timezone);
 
-//
 // Weather Underground URL/URI settings
-//
-$wug_access_type="http://";                             // You can use "https://" it is likely better, if you rapid fire maybe not
+$wug_access_type="http://"; // You can use "https://" it is likely better, if you rapid fire maybe not
 $wug_weather_host="weatherstation.wunderground.com";
-$wug_weather_uri="/weatherstation/updateweatherstation.php?action=updateraw&ID=$wug_sid&PASSWORD=$wug_pw&dateutc=$mysqltime";
-$wug_req="$wug_access_type$wug_weather_host$wug_weather_uri";
-
+$wug_weather_path="/weatherstation/updateweatherstation.php";
+$wug_weather_uri="?action=updateraw&ID=$wug_sid&PASSWORD=$wug_pw&dateutc=$mysqltime";
+$wug_req="$wug_access_type$wug_weather_host$wug_weather_path$wug_weather_query";
 
 
 // The unknown entities is an array of arrays. The inner arrays
@@ -84,7 +87,7 @@ function WU_put($uri_data)
 
     // We log very push to php.log, probably can be removed
     file_put_contents("php.log","write weatehr underground : $uri_data\n",FILE_APPEND);
-    
+
     if(strlen($wug_sid))
     {
         if($handle = fopen("$wug_req$uri_data", "r"))
