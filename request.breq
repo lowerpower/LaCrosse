@@ -1,17 +1,8 @@
 <?php
-/* vim: set expandtab tabstop=4 shiftwidth=4 softtabstop=4 foldmethod=marker ft=php:
+/*
+vim: set expandtab tabstop=4 shiftwidth=4 softtabstop=4 foldmethod=marker ft=php:
 
 @author mike |at| mycal.net
-
-To Do
------ karlc@keckec.com and Skydiver have done some great work on getting the
-'Epoch' value set so the weather server is not so chatty, and basically to keep
-it happy, this has not been added.   Things like update rate have not been
-added.
-
-There is no reason why this cannot handle multiple weather stations in the cloud
-or store weater data in local db.
-
 */
 
 
