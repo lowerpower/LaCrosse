@@ -87,6 +87,7 @@ other sized packets too. That will need investigation
 The layout of the 197-byte record is as follows. Start and end byte numbers end with H or L to indicate which nybble the 
 field starts or ends with. H or L indicate the high-order or low-order nybble. The length is given in nybbles, not bytes.
 
+```
 ___________________________________
     |Strt|Len in|
 Strt|nyb |nybble|Encoding |Function
@@ -168,7 +169,7 @@ Data Field Notes:
 4. Humidity is one byte, in percent
 5. Temperatures are in hundredths of a degree C, plus 40 degrees C
 
-
+```
 
 Registration Gateway
 --------------------
