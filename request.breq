@@ -26,7 +26,7 @@ $debug_packets = 0;
 //$wug_pw = "";  // WU user password
 //$wug_sid = ""; // WU station ID (leave blank to not use wu upload)
 
-// Set to non zero to send indoor valuues to weather underground.
+// Set to non zero to send indoor values to weather underground.
 $wug_send_indoor_values = 0;
 //-----------------------------------------------------------------------------
 // End configuration
@@ -84,8 +84,8 @@ function WU_put($uri_data)
 {
     global $wug_req, $wug_sid;
 
-    // We log very push to php.log, probably can be removed
-    file_put_contents("php.log", "write weatehr underground : $uri_data\n", FILE_APPEND);
+    // We log every push to php.log, probably can be removed
+    file_put_contents("php.log", "write weather underground : $uri_data\n", FILE_APPEND);
 
     if (strlen($wug_sid))
     {
@@ -95,12 +95,11 @@ function WU_put($uri_data)
 
             fclose($handle);
 
-            //echo "\n$buffer\n";
             file_put_contents("php.log", "returned : $buffer\n\n", FILE_APPEND);
         }
         else
         {
-            // Failed
+            error_log("Sending data to Weather Underground failed");
         }
     }
 }
@@ -143,7 +142,6 @@ function calculateDewPoint($temperature, $humidity)
 
     return round(($b * $v / ($a - $v)), 2);
 }
-
 
 //
 // Writes the given string to the data log file: php.log
@@ -414,21 +412,10 @@ function wd2str(&$nybs, $startn)
 }
 
 //
-// currentWind - returns the current wind direction in degrees
-//
-function currentWind(&$nybs, $startn)
-{
-    // get the current wind direction in degrees
-    return ($nybs[$startn] * 22.5);
-}
-
-
-//
 // Average 2 wind values
 //
 function avgWind2val($a, $b)
 {
-
     // Find the mid point
     $avg = ($a + $b) / 2;
 
@@ -442,7 +429,6 @@ function avgWind2val($a, $b)
     $avg = $avg % 360;
 
     return ($avg);
-
 }
 
 //
@@ -452,7 +438,6 @@ function avgWind(&$nybs, $startn)
 {
     return (avgWind2val($nybs[$startn] * 22.5, $nybs[$startn + 1] * 22.5));
 }
-
 
 //
 // avgWind - returns the Average of the last 5 wind directions (experimental)
@@ -464,7 +449,6 @@ function avgWind2(&$nybs, $startn)
         $avg[$i] = avgWind2val($nybs[$startn + $i] * 22.5, $nybs[$startn + $i + 1] * 22.5);
     }
 
-
     for ($i = 0; $i < 3; $i++)
     {
         $avg[$i] = avgWind2val($avg[$i], $avg[$i + 1]);
@@ -475,12 +459,8 @@ function avgWind2(&$nybs, $startn)
         $avg[$i] = avgWind2val($avg[$i], $avg[$i + 1]);
     }
 
-
     return (avgWind2val($avg[0], $avg[1]));
-
-
 }
-
 
 //
 // dat2str converts nybbles into a date, formatted
@@ -497,7 +477,6 @@ function dat2str(&$nybs, $startn)
     $min = bcd2int($nybs, $startn + 8, 2);
     return sprintf("%02d/%02d/%02d-%02d:%02d", $mm, $dd, $yy, $hh, $min);
 }
-
 
 //
 // baro2str converts an array of nybbles to barometric
@@ -622,7 +601,6 @@ function crc8($string, $len)
     return $crc ^ 0xff;
 }
 
-
 /*
 checksum used in an oregon scientic module
 uint8_t _crc8( uint8_t *addr, uint8_t len)
@@ -731,6 +709,110 @@ function xor8($buffer)
 //--------------------------------------------------------------------------------------------------------------
 // Packet processing begins here:
 //--------------------------------------------------------------------------------------------------------------
+
+function assembleWUData($nybs, $send_indoor)
+{
+    $uri = "";
+
+    $uri .= "&tempf=" . temp2str($nybs, 0x04b);       //***
+    $uri .= "&humidity=" . hum2str($nybs, 0x0a6);
+    // Calc and send Dew Point
+    $uri .= "&dewptf=" . calculateDewPoint(temp2str($nybs, 0x04b), hum2str($nybs, 0x0a6));
+    if ($send_indoor)
+    {
+        $uri .= "&indoortempf=" . temp2str($nybs, 0x027);
+        $uri .= "&indoorhumidity=" . hum2str($nybs, 0x08c);
+    }
+    $uri .= "&windspeedmph=" . ws2str($nybs, 0x122);
+    $uri .= "&windgustmph=" . ws2str($nybs, 0x140);
+    $uri .= "&winddir=" . avgWind2($nybs, 0x12a);
+    $uri .= "&baromin=" . baro2str($nybs, 0x14f);
+    $uri .= "&rainin=" . rf2str($nybs, 0x0fa, 6);
+    $uri .= "&dailyrainin=" . rf2str($nybs, 0x0e4, 6);     // Probably not what WU wants, they want daily,  this is 24hrs
+    $uri .= "&softwaretype=phpLaxWeatherBro";
+
+    return $uri;
+}
+
+function assembleLogData($nybs, $postdata)
+{
+    $outstr = date('Y-m-d H:i:s') . "   Packet Type 01:01";
+    $outstr .= "\n";
+    // Temperatures are formatted to accommodate 100+ degrees, so
+    //  we don't put a space after the colon
+    $outstr .= " Outdoor: ";
+    $outstr .= "Temp:" . temp2str($nybs, 0x04b) . " ";   // byte 25 lower nybble
+    $outstr .= "Max:" . temp2str($nybs, 0x041) . " ";   // byte 20, lower nybble
+    $outstr .= dat2str($nybs, 0x02d) . " ";   // Max Outside Temp Time byte 0x16 lower nybble
+    $outstr .= "Min:" . temp2str($nybs, 0x046) . " ";   // byte 23 high nybble
+    $outstr .= dat2str($nybs, 0x037) . " ";   // Min Outside Temp Time byte 1b lower nybble
+    $outstr .= "Humidity: " . hum2str($nybs, 0x0a6) . " ";   // byte 53 higher nybble
+    $outstr .= "Max:" . hum2str($nybs, 0x0a2) . " ";   // byte 51 higher nybble
+    $outstr .= dat2str($nybs, 0x08e) . " ";   // Max Outside Humidity Time byte 47 higher nybble
+    $outstr .= "Min:" . hum2str($nybs, 0x0a4) . " ";   // byte 52 higher nybble
+    $outstr .= dat2str($nybs, 0x098) . " ";   // Min Outside Humidity Time byte 4c higher nybble
+    $outstr .= "\n ";
+    $outstr .= " Indoor: ";
+    $outstr .= "Temp:" . temp2str($nybs, 0x027) . " ";   // byte 13 lower nybble
+    $outstr .= "Max:" . temp2str($nybs, 0x01d) . " ";   // byte 0e lower nybble
+    $outstr .= dat2str($nybs, 0x009) . " ";   // Max Inside Temp Time byte 04 lower nybble
+    $outstr .= "Min:" . temp2str($nybs, 0x022) . " ";   // byte 72 higher nybble
+    $outstr .= dat2str($nybs, 0x013) . " ";   // Min Inside Temp Time byte 09 lower nybble
+    $outstr .= "Humidity: " . hum2str($nybs, 0x08c) . " ";   // byte 46 higher nybble
+    $outstr .= "Max:" . hum2str($nybs, 0x088) . " ";   // byte 44 higher nybble
+    $outstr .= dat2str($nybs, 0x074) . " ";   // Max Inside Humidity Time byte 3a higher nybble
+    $outstr .= "Min:" . hum2str($nybs, 0x08a) . " ";   // byte 45 higher nybble
+    $outstr .= dat2str($nybs, 0x07e) . " ";   // Min Inside Humidity Time byte 3f higher nybble
+    //$outstr.="OutTemp2:".temp2str($nybs,  0x06f)." ";   // byte 37 lower nybble
+    $outstr .= "\n ";
+    $outstr .= "Windsp:" . ws2str($nybs, 0x122) . " ";   // Current ave wind speed
+    $outstr .= "Gust:" . ws2str($nybs, 0x140) . " ";   // Max Wind Gust in last cycle
+    $outstr .= "Max Gust:" . ws2str($nybs, 0x13a) . " ";   // Max Wind Gust since reset
+    $outstr .= "Max Gust Time:" . dat2str($nybs, 0x130) . " ";   // Time/Date of Max Wind Gust
+    $outstr .= "WindDir: " . wd2str($nybs, 0x12a) . " ";   // Wind Direction History Array
+    $outstr .= "Barometer: " . baro2str($nybs, 0x14f) . " ";   // Current barometer
+    $outstr .= "Min: " . baro2str($nybs, 0x159) . " ";   // Min Barometer
+    $outstr .= "Max: " . baro2str($nybs, 0x163) . " ";   // Max Barometer
+    $outstr .= "\n ";
+    $outstr .= "Rain: ";
+    $outstr .= "1hr: " . rf2str($nybs, 0x0fa, 6) . " "; // Last 24h rain
+    $outstr .= "24hr: " . rf2str($nybs, 0x0e4, 6) . " "; // Last 24h rain
+    $outstr .= "Week: " . rf2str($nybs, 0x0ce, 6) . " "; // Previous Week's rain
+    $outstr .= "Month: " . rf2str($nybs, 0x0b8, 7) . " "; // Previous month's rain
+    $outstr .= "Since Reset: " . rf2str($nybs, 0x10b, 7) . " "; // Rain since last reset
+    $outstr .= "Reset: " . dat2str($nybs, 0x101) . " ";   // Date/Time of Last Rain Reset
+    $outstr .= "Last Heavy Rain Ended: " . dat2str($nybs, 0x0ea) . " ";   // Date/Time of Last 1-hour rain window
+    $outstr .= "\n ";
+    $outstr .= "Unknown Dates: ";
+    $outstr .= "0x051:" . dat2str($nybs, 0x051) . " ";   // Unknown Time byte 28
+    $outstr .= "0x05b:" . dat2str($nybs, 0x05b) . " ";   // Unknown Time byte 2d
+    $outstr .= "0x0d4:" . dat2str($nybs, 0x0d4) . " ";   // Unknown Time byte 6a
+    $outstr .= "0x112:" . dat2str($nybs, 0x112) . " ";   // Unknown Time Nybble 0x112
+    $outstr .= "0x16c:" . dat2str($nybs, 0x16c) . " ";   // Unknown Time byte b6
+    $outstr .= "0x176:" . dat2str($nybs, 0x176) . " ";   // Unknown Time byte bb
+    $outstr .= "\n ";
+    $outstr .= "Checksums for all but last two bytes: ";
+    $postlen = strlen($postdata);
+    //$outstr.= sprintf("checksumnyb:%03x ",checksumnyb($postdata,$postlen-2));
+    //$outstr.= sprintf("checksum8:%02x ",checksum8(substr($postdata,0,$postlen-2)));
+    //$outstr.= sprintf("xor8:%02x ",xor8(substr($postdata,0,$postlen-2)));
+    //$outstr.= sprintf("crc8:%02x ",crc8($postdata,$postlen-2));
+    //$outstr.= sprintf("csumones8:%02x ",csumones8($postdata,$postlen-2));
+    $outstr .= sprintf("CRC16: %04x", crc16($postdata, $postlen - 2));
+    $outstr .= "\n";
+    //$outstr .= "Checksums for all but the 2 last bytes:  ";
+    //$outstr.= sprintf("checksumnyb:%03x ",checksumnyb($postdata,$postlen-1));
+    //$outstr.= sprintf("checksum8:%02x ",checksum8(substr($postdata,0,$postlen-1)));
+    //$outstr.= sprintf("xor8:%02x ",xor8(substr($postdata,0,$postlen-1)));
+    //$outstr.= sprintf("crc8:%02x ",crc8($postdata,$postlen-1));
+    //$outstr.= sprintf("csumones8:%02x ",csumones8($postdata,$postlen-1));
+    //$outstr.= sprintf("CRC16: %04x",crc16("123456789",9));
+    //$outstr.="\n ";
+    // Log BCD data to a file
+    $outstr .= "\n" . dump_unknown($postdata);
+
+    return $outstr;
+}
 
 
 // Parse the incoming response, first get the headers
@@ -1010,7 +1092,7 @@ if (array_key_exists("HTTP_IDENTIFY", $head))
                                         // This packet should contain 197 bytes of data (ive also seen 102 bytes of data, but I think it should always bee 197 bytes of data).
                                         // This is the sensor data we should decode, use skydivers data to decode it and log to a database/mrtg/etc...
                                         $postdata = file_get_contents("php://input");
-                                        //
+
                                         // At this point we only know how to decode this packet if it is 197 bytes, although I've seen other sizes, but it might be corrupt wireless
                                         // so don't do anything unless 197 bytes.  It does seem like 210 byte packets are common, but I have not captured these from
                                         // Lacrosse alerts site.
@@ -1018,113 +1100,17 @@ if (array_key_exists("HTTP_IDENTIFY", $head))
                                         // 197 byte packets start with : 01 64 14 12 01 40 30 40 63
                                         // 210 byte packets start with : 21 64 14 0b 07 1c 02 66 00
                                         //  30 byte packets start with : 21 64 10 01 07 1c 07
-                                        ///
                                         if (197 == strlen($postdata))
                                         {
                                             // Convert the post data to an array of nybbles
                                             $nybs = post2nyb($postdata);
-                                            $outstr = date('Y-m-d H:i:s') . "   Packet Type 01:01";
-                                            //$slen=strlen($postdata);
-                                            //$outstr.="{$slen} bytes "; // String length
-                                            // Temperatures are formatted to accommodate 100+ degrees, so
-                                            //  we don't put a space after the colon
-                                            $uri = "";
-                                            $outstr .= "\n";
-                                            $outstr .= " Outdoor: ";
-                                            $outstr .= "Temp:" . temp2str($nybs, 0x04b) . " ";   // byte 25 lower nybble
-                                            $uri .= "&tempf=" . temp2str($nybs, 0x04b);       //***
-                                            $outstr .= "Max:" . temp2str($nybs, 0x041) . " ";   // byte 20, lower nybble
-                                            $outstr .= dat2str($nybs, 0x02d) . " ";   // Max Outside Temp Time byte 0x16 lower nybble
-                                            $outstr .= "Min:" . temp2str($nybs, 0x046) . " ";   // byte 23 high nybble
-                                            $outstr .= dat2str($nybs, 0x037) . " ";   // Min Outside Temp Time byte 1b lower nybble
-                                            $outstr .= "Humidity: " . hum2str($nybs, 0x0a6) . " ";   // byte 53 higher nybble
-                                            $uri .= "&humidity=" . hum2str($nybs, 0x0a6);
-                                            // Calc and send Dew Point
-                                            $uri .= "&dewptf=" . calculateDewPoint(temp2str($nybs, 0x04b), hum2str($nybs, 0x0a6));
-                                            $outstr .= "Max:" . hum2str($nybs, 0x0a2) . " ";   // byte 51 higher nybble
-                                            $outstr .= dat2str($nybs, 0x08e) . " ";   // Max Outside Humidity Time byte 47 higher nybble
-                                            $outstr .= "Min:" . hum2str($nybs, 0x0a4) . " ";   // byte 52 higher nybble
-                                            $outstr .= dat2str($nybs, 0x098) . " ";   // Min Outside Humidity Time byte 4c higher nybble
-                                            $outstr .= "\n ";
-                                            $outstr .= " Indoor: ";
-                                            if ($wug_send_indoor_values)
-                                            {
-                                                $uri .= "&indoortempf=" . temp2str($nybs, 0x027);
-                                            }
-                                            $outstr .= "Temp:" . temp2str($nybs, 0x027) . " ";   // byte 13 lower nybble
-                                            $outstr .= "Max:" . temp2str($nybs, 0x01d) . " ";   // byte 0e lower nybble
-                                            $outstr .= dat2str($nybs, 0x009) . " ";   // Max Inside Temp Time byte 04 lower nybble
-                                            $outstr .= "Min:" . temp2str($nybs, 0x022) . " ";   // byte 72 higher nybble
-                                            $outstr .= dat2str($nybs, 0x013) . " ";   // Min Inside Temp Time byte 09 lower nybble
-                                            $outstr .= "Humidity: " . hum2str($nybs, 0x08c) . " ";   // byte 46 higher nybble
-                                            if ($wug_send_indoor_values)
-                                            {
-                                                $uri .= "&indoorhumidity=" . hum2str($nybs, 0x08c);
-                                            }
-                                            $outstr .= "Max:" . hum2str($nybs, 0x088) . " ";   // byte 44 higher nybble
-                                            $outstr .= dat2str($nybs, 0x074) . " ";   // Max Inside Humidity Time byte 3a higher nybble
-                                            $outstr .= "Min:" . hum2str($nybs, 0x08a) . " ";   // byte 45 higher nybble
-                                            $outstr .= dat2str($nybs, 0x07e) . " ";   // Min Inside Humidity Time byte 3f higher nybble
-                                            //$outstr.="OutTemp2:".temp2str($nybs,  0x06f)." ";   // byte 37 lower nybble
-                                            $outstr .= "\n ";
-                                            $outstr .= "Windsp:" . ws2str($nybs, 0x122) . " ";   // Current ave wind speed
-                                            $uri .= "&windspeedmph=" . ws2str($nybs, 0x122);
-                                            $outstr .= "Gust:" . ws2str($nybs, 0x140) . " ";   // Max Wind Gust in last cycle
-                                            $uri .= "&windgustmph=" . ws2str($nybs, 0x140);
-                                            $outstr .= "Max Gust:" . ws2str($nybs, 0x13a) . " ";   // Max Wind Gust since reset
-                                            $outstr .= "Max Gust Time:" . dat2str($nybs, 0x130) . " ";   // Time/Date of Max Wind Gust
-                                            $outstr .= "WindDir: " . wd2str($nybs, 0x12a) . " ";   // Wind Direction History Array
-                                            //$uri   .="&winddir=".currentWind($nybs, 0x12a);
-                                            $uri .= "&winddir=" . avgWind2($nybs, 0x12a);
-                                            $outstr .= "Barometer: " . baro2str($nybs, 0x14f) . " ";   // Current barometer
-                                            $uri .= "&baromin=" . baro2str($nybs, 0x14f);
-                                            $outstr .= "Min: " . baro2str($nybs, 0x159) . " ";   // Min Barometer
-                                            $outstr .= "Max: " . baro2str($nybs, 0x163) . " ";   // Max Barometer
-                                            $outstr .= "\n ";
-                                            $outstr .= "Rain: ";
-                                            $outstr .= "1hr: " . rf2str($nybs, 0x0fa, 6) . " "; // Last 24h rain
-                                            $uri .= "&rainin=" . rf2str($nybs, 0x0fa, 6);
-                                            $outstr .= "24hr: " . rf2str($nybs, 0x0e4, 6) . " "; // Last 24h rain
-                                            $uri .= "&dailyrainin=" . rf2str($nybs, 0x0e4, 6);     // Probably not what WU wants, they want daily,  this is 24hrs
-                                            $outstr .= "Week: " . rf2str($nybs, 0x0ce, 6) . " "; // Previous Week's rain
-                                            $outstr .= "Month: " . rf2str($nybs, 0x0b8, 7) . " "; // Previous month's rain
-                                            $outstr .= "Since Reset: " . rf2str($nybs, 0x10b, 7) . " "; // Rain since last reset
-                                            $outstr .= "Reset: " . dat2str($nybs, 0x101) . " ";   // Date/Time of Last Rain Reset
-                                            $outstr .= "Last Heavy Rain Ended: " . dat2str($nybs, 0x0ea) . " ";   // Date/Time of Last 1-hour rain window
-                                            $outstr .= "\n ";
-                                            $outstr .= "Unknown Dates: ";
-                                            $outstr .= "0x051:" . dat2str($nybs, 0x051) . " ";   // Unknown Time byte 28
-                                            $outstr .= "0x05b:" . dat2str($nybs, 0x05b) . " ";   // Unknown Time byte 2d
-                                            $outstr .= "0x0d4:" . dat2str($nybs, 0x0d4) . " ";   // Unknown Time byte 6a
-                                            $outstr .= "0x112:" . dat2str($nybs, 0x112) . " ";   // Unknown Time Nybble 0x112
-                                            $outstr .= "0x16c:" . dat2str($nybs, 0x16c) . " ";   // Unknown Time byte b6
-                                            $outstr .= "0x176:" . dat2str($nybs, 0x176) . " ";   // Unknown Time byte bb
-                                            $outstr .= "\n ";
-                                            $outstr .= "Checksums for all but last two bytes: ";
-                                            $postlen = strlen($postdata);
-                                            //$outstr.= sprintf("checksumnyb:%03x ",checksumnyb($postdata,$postlen-2));
-                                            //$outstr.= sprintf("checksum8:%02x ",checksum8(substr($postdata,0,$postlen-2)));
-                                            //$outstr.= sprintf("xor8:%02x ",xor8(substr($postdata,0,$postlen-2)));
-                                            //$outstr.= sprintf("crc8:%02x ",crc8($postdata,$postlen-2));
-                                            //$outstr.= sprintf("csumones8:%02x ",csumones8($postdata,$postlen-2));
-                                            $outstr .= sprintf("CRC16: %04x", crc16($postdata, $postlen - 2));
-                                            $outstr .= "\n";
-                                            //$outstr .= "Checksums for all but the 2 last bytes:  ";
-                                            //$outstr.= sprintf("checksumnyb:%03x ",checksumnyb($postdata,$postlen-1));
-                                            //$outstr.= sprintf("checksum8:%02x ",checksum8(substr($postdata,0,$postlen-1)));
-                                            //$outstr.= sprintf("xor8:%02x ",xor8(substr($postdata,0,$postlen-1)));
-                                            //$outstr.= sprintf("crc8:%02x ",crc8($postdata,$postlen-1));
-                                            //$outstr.= sprintf("csumones8:%02x ",csumones8($postdata,$postlen-1));
-                                            //$outstr.= sprintf("CRC16: %04x",crc16("123456789",9));
-                                            //$outstr.="\n ";
-                                            // Log BCD data to a file
-                                            $outstr .= "\n" . dump_unknown($postdata);
-                                            write_data_log($outstr);
+
                                             //
-                                            // Send to weather underground  (must have parameters set up tom)
+                                            // Send to weather underground  (must have parameters set up top)
                                             //
-                                            $uri .= "&softwaretype=phpLaxWeatherBro";
-                                            WU_put($uri);
+                                            WU_put(assembleWUData($nybs, $wug_send_indoor_values));
+
+                                            write_data_log(assembleLogData($nybs, $postdata));
 
                                             // Log a hex dump of
                                             write_dump_log($postdata, "01:01");
@@ -1138,15 +1124,6 @@ if (array_key_exists("HTTP_IDENTIFY", $head))
                                             {
                                                 file_put_contents("postdata197.bin", $packtime . $postdata, FILE_APPEND);
                                             }
-                                            // We should checksum the packet here before decode.  I believe that the checksum is generated by the
-                                            // weather station before it is sent over the wireless link. So the packet can be corrupted,  so far I have not
-                                            // figured out the checksum though, so we just decode it if 197 bytes
-                                            // if(checksum8a($postdata))
-                                            {
-                                                // Decode post data:
-                                            }
-                                            // Reply with 00:00 no data
-                                            //header('HTTP_FLAGS: 00:00');
                                         }
                                         else
                                         {
