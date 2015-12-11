@@ -794,20 +794,18 @@ if(array_key_exists("HTTP_IDENTIFY",$head)) {
 	}
 	else if(("7F"==$id1) && ("10"==$id2))
 	{
+		// This is the first packet that WS send to register itself, It specifies its serial number as the first 8 digits of the packet, if
+		// the serial number is default, it
+		// there should be 13 bytes of ID data on request
 		$postdata = file_get_contents("php://input");
 		write_dump_log($postdata,"7F:10");
 
 		// Don't reply to this packet unless we have decided it is OK
 		$do_reply=0;
-		// This is the first packet that WS send to register itself, It specifies its serial number as the first 8 digits of the packet, if
-		// the serial number is default, it
-		// there should be 13 bytes of ID data on request
-		// First parse out the incoming serial number
-		$postdata = file_get_contents("php://input");
-		//
+
 		// convert the post data to an ascii representation
 		$asc_data=bin2hex($postdata);
-			   
+
 		// Get the serial number from the request data
 		$serial_number=substr($postdata,0,8);
 
