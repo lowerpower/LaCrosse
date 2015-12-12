@@ -1,8 +1,5 @@
 <?php
-function getallheaders() {
-    return array();
-}
-require_once('request.breq');
+require_once('base.php');
 
 class RequestTest extends PHPUnit_Framework_TestCase
 {
