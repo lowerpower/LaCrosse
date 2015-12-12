@@ -23,8 +23,8 @@ $register_this_serial = 0;
 $debug_packets = 0;
 
 // Weather Underground Settings  (this assumes only one ws handled by this file)
-//$wug_pw = "";  // WU user password
-//$wug_sid = ""; // WU station ID (leave blank to not use wu upload)
+$wug_pw = "";  // WU user password
+$wug_sid = ""; // WU station ID (leave blank to not use wu upload)
 
 // Set to non zero to send indoor values to weather underground.
 $wug_send_indoor_values = 0;
