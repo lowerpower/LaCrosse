@@ -21,9 +21,7 @@ class RequestTest extends PHPUnit_Framework_TestCase
 
         $logData = assembleLogData($nybs, $packet);
 
-        # TODO regex match the date
-//        $expected = '2015-12-11 17\:55\:59   Packet Type 01\:01
-        $expected = '.* .*   Packet Type 01\:01
+        $expected = '\d{4}-[01][0-9]-[01][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]   Packet Type 01\:01
  Outdoor\: Temp\:52.88 Max\:97.88 07\/19\/15-02\:46 Min\:3.38 02\/20\/15-07\:02 Humidity\: 82 Max\:93 06\/28\/15-08\:27 Min\:17 04\/05\/15-04\:51\s
   Indoor\: Temp\:68.36 Max\:139.82 11\/24\/15-03\:45 Min\:-39.28 11\/24\/15-12\:31 Humidity\: 59 Max\:81 07\/19\/15-02\:12 Min\:1 11\/24\/15-10\:58\s
  Windsp\:0.00 Gust\:0.00 Max Gust\:9.56 Max Gust Time\:12\/07\/15-11\:19 WindDir\: W   W   W   W   W   W   Barometer\: 29.91 Min\: 10.88 Max\: 32.59\s
