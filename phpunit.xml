@@ -1,0 +1,8 @@
+<!--<phpunit bootstrap="src/autoload.php">-->
+<phpunit>
+  <testsuites>
+    <testsuite name="all">
+      <directory>test</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>
