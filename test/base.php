@@ -2,4 +2,4 @@
 function getallheaders() {
     return array();
 }
-require_once('request.breq');
+require_once(__DIR__ . '/../request.breq');
