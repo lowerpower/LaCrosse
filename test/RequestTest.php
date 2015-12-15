@@ -5,7 +5,7 @@ class RequestTest extends PHPUnit_Framework_TestCase
 {
     public function testWeatherUndergroundData()
     {
-        $packet = file_get_contents('test/packets/197-byte-weather.dump');
+        $packet = file_get_contents(__DIR__ . '/packets/197-byte-weather.dump');
         $nybs = post2nyb($packet);
 
         $wuData = assembleWUData($nybs, 1);
@@ -16,7 +16,7 @@ class RequestTest extends PHPUnit_Framework_TestCase
 
     public function testLogData()
     {
-        $packet = file_get_contents('test/packets/197-byte-weather.dump');
+        $packet = file_get_contents(__DIR__ . '/packets/197-byte-weather.dump');
         $nybs = post2nyb($packet);
 
         $logData = assembleLogData($nybs, $packet);
