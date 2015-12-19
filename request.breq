@@ -849,313 +849,288 @@ if (array_key_exists("HTTP_IDENTIFY", $head))
         header('HTTP_FLAGS: 10:00');
         $reply = "";
     }
-    else
+    else if (("00" == $id1) && ("20" == $id2))
     {
-        if (("00" == $id1) && ("20" == $id2))
+        // Push button Registration Packet (00:02)  When the button is pushed on the gateway and it is unregistered it will send this packet
+        // We can then reply to this packet with registration information.   We send a transofmration key and it uses this and the default
+        // gateway key to generate a new key that will be used in the future.  I do not know how the transofmration works, but it doesn't matter
+        // you can just store it and recognize it, or ignore it and just use the MAC serial number.
+        //
+        $postdata = file_get_contents("php://input");
+
+        write_dump_log($postdata, "00:20");
+
+
+        // I try to put my own server in here, but it doesn't seem to matter or update anything
+        $weather_server = "box.weatherdirect.com";                           // So far this doesn't seem to matter
+
+        // Likely we should check the MAC and only register it if we have set it in motion somehow
+        // Unregistered packet, do we need to register this one?
+        // Check $mac against registration pending.
+
+
+        // This is the key that is used to transform the default registration code to the new one, I don't know the transform, so I
+        // Just use all zeros.  Likely we can capture a bunch of key+zeros=transform and figure it out.
+        //
+        // We retply with 20:00 and config:
+        // 1st 8 b
+        $new_key = chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0);       // This is used to generate new key
+        // no idea on transform, so use zeros, if everyone
+        // uses zeros, maybe we can collect enough data
+        // to figure out transform.
+        $new_server = str_pad($weather_server, 0x98, chr(0));                    // Length 0x98
+        $new_server2 = str_pad($weather_server . chr(0) . $weather_server, 0x56, chr(0)); // set the weather server, doesn't seem to matter
+        $end = chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0xff);
+
+        $reply = $new_key . $new_server . $new_server2 . $end;
+
+        header('HTTP_FLAGS: 20:00');                        // Also seen reply 20:01 maybe when it is already registered?
+        // To detect this we would likely have to know the transform, or
+        // how to tell if it has been transformed, or keep track after transform
+
+    }
+    else if (("00" == $id1) && ("30" == $id2))
+    {
+        $postdata = file_get_contents("php://input");
+        write_dump_log($postdata, "00:30");
+        // got this afther the 00:70 packet was responded to, I think you must ack this packet for config to stick.
+        header('HTTP_FLAGS: 30:00');
+    }
+    else if (("00" == $id1) && ("70" == $id2))
+    {
+        $postdata = file_get_contents("php://input");
+        write_dump_log($postdata, "00:70");
+        //
+        // Gateway Ping? Data seems to be controling frequency of packets
+        //
+        header('HTTP_FLAGS: 70:00');
+        $reply = "";
+        $reply .= chr(0xff) . chr(0xff) . chr(0xff) . chr(0xff) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0);
+        $reply .= chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0);
+
+        // Pace in seconds of (00:70) packet request, msb first. IE chr(0).chr(10) would be 10 seconds
+        // chr(0).chr(0xf0) = 240 seconds (this seems to be default)
+        $reply .= chr(0) . chr(0xf0);
+
+    }
+    else if (("7F" == $id1) && ("10" == $id2))
+    {
+        // This is the first packet that WS send to register itself, It specifies its serial number as the first 8 digits of the packet, if
+        // the serial number is default, it
+        // there should be 13 bytes of ID data on request
+        $postdata = file_get_contents("php://input");
+        write_dump_log($postdata, "7F:10");
+
+        // Don't reply to this packet unless we have decided it is OK
+        $do_reply = 0;
+
+        // convert the post data to an ascii representation
+        $asc_data = bin2hex($postdata);
+
+        // Get the serial number from the request data
+        $serial_number = substr($postdata, 0, 8);
+
+        // Check if this is the default serial number
+        if (0 == strcmp($serial_number, pack("H*", "0102030405060708")))
         {
-            // Push button Registration Packet (00:02)  When the button is pushed on the gateway and it is unregistered it will send this packet
-            // We can then reply to this packet with registration information.   We send a transofmration key and it uses this and the default
-            // gateway key to generate a new key that will be used in the future.  I do not know how the transofmration works, but it doesn't matter
-            // you can just store it and recognize it, or ignore it and just use the MAC serial number.
-            //
-            $postdata = file_get_contents("php://input");
-
-            write_dump_log($postdata, "00:20");
-
-
-            // I try to put my own server in here, but it doesn't seem to matter or update anything
-            $weather_server = "box.weatherdirect.com";                           // So far this doesn't seem to matter
-
-            // Likely we should check the MAC and only register it if we have set it in motion somehow
-            // Unregistered packet, do we need to register this one?
-            // Check $mac against registration pending.
-
-
-            // This is the key that is used to transform the default registration code to the new one, I don't know the transform, so I
-            // Just use all zeros.  Likely we can capture a bunch of key+zeros=transform and figure it out.
-            //
-            // We retply with 20:00 and config:
-            // 1st 8 b
-            $new_key = chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0);       // This is used to generate new key
-            // no idea on transform, so use zeros, if everyone
-            // uses zeros, maybe we can collect enough data
-            // to figure out transform.
-            $new_server = str_pad($weather_server, 0x98, chr(0));                    // Length 0x98
-            $new_server2 = str_pad($weather_server . chr(0) . $weather_server, 0x56, chr(0)); // set the weather server, doesn't seem to matter
-            $end = chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0xff);
-
-            $reply = $new_key . $new_server . $new_server2 . $end;
-
-            header('HTTP_FLAGS: 20:00');                        // Also seen reply 20:01 maybe when it is already registered?
-            // To detect this we would likely have to know the transform, or
-            // how to tell if it has been transformed, or keep track after transform
+            // Default Serial Number, refuse it OR check if we need to match it and set a new serialnumber
+            // we should set a new serial number only if the user wants one, really though it should be done
+            // by lacrosse alerts.
+            $do_reply = 0;
+            if ($register_this_serial)
+            {
+                // Do you really want to do this?
+                //$do_reply=1;
+            }
 
         }
         else
         {
-            if (("00" == $id1) && ("30" == $id2))
+            if (0 == strcmp($serial_number, $station_serial))
             {
-                $postdata = file_get_contents("php://input");
-                write_dump_log($postdata, "00:30");
-                // got this afther the 00:70 packet was responded to, I think you must ack this packet for config to stick.
-                header('HTTP_FLAGS: 30:00');
+                // For now do not reply unless it is the one we are interested in
+                $do_reply = 1;
             }
             else
             {
-                if (("00" == $id1) && ("70" == $id2))
-                {
-                    $postdata = file_get_contents("php://input");
-                    write_dump_log($postdata, "00:70");
-                    //
-                    // Gateway Ping? Data seems to be controling frequency of packets
-                    //
-                    header('HTTP_FLAGS: 70:00');
-                    $reply = "";
-                    $reply .= chr(0xff) . chr(0xff) . chr(0xff) . chr(0xff) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0);
-                    $reply .= chr(0) . chr(0) . chr(0) . chr(0) . chr(0) . chr(0);
+                $do_reply = 0;
+            }
+        }
 
-                    // Pace in seconds of (00:70) packet request, msb first. IE chr(0).chr(10) would be 10 seconds
-                    // chr(0).chr(0xf0) = 240 seconds (this seems to be default)
-                    $reply .= chr(0) . chr(0xf0);
+        if ($do_reply)
+        {
+            // Reply with 14:00 and 38 bytes of data.  This data is likely configuatio of the WS
+            header('HTTP_FLAGS: 14:00');
+            //
+            // Important, the reply packet 14:00 can set the serial number of the weather station if the weather station has
+            // default serial number, ie 01 02 03 04 05 06 07 08.  It doesn't seem to be resettable after it has been changed
+            // the first time, so it might be advisable to register with the Lacrosse server first to get a good serial number
+            // written, so if you ever wanted to go back to lacrosse service you could.
+            //
+            // If the device has a serial number, then it must match below or this packet is ignored.  The same holds true
+            // for below, if you don't populate the correct serial number then the internet display on the weather station
+            // will not light.
+            //
+            //
+            $reply = "";
+            $reply .= chr(1);                                                             // Seems to be always 1
+            // if we have a valid serial number in the request, stuff it here:
+            $reply .= $station_serial;
+            //$reply.=chr(0x7f).chr(0xff);												// All serial nubers begin with this
+            //$reply.=chr(0x0).chr(0x0).chr(0x00).chr(0x00).chr(0x00).chr(0x00);		// Serial number, changable part 6 bytes, this is set above
+            $reply .= chr(0) . chr(0x30) . chr(0) . chr(0xf) . chr(0x00) . chr(0x0) . chr(0x00);    // ?
+            $reply .= chr(0xf) . chr(0) . chr(0x0) . chr(0) . chr(0x77) . chr(0x0);                // ?
 
-                }
-                else
-                {
-                    if (("7F" == $id1) && ("10" == $id2))
-                    {
-                        // This is the first packet that WS send to register itself, It specifies its serial number as the first 8 digits of the packet, if
-                        // the serial number is default, it
-                        // there should be 13 bytes of ID data on request
-                        $postdata = file_get_contents("php://input");
-                        write_dump_log($postdata, "7F:10");
+            $reply .= chr(0xe) . chr(0xff);                                          // Skydiver calls this Ephoch, I do nothing here
 
-                        // Don't reply to this packet unless we have decided it is OK
-                        $do_reply = 0;
+            $dateint = time(); // Grab the Unix date/time atomically, so there is no possibility of date/time field overflow causing errors
+            // The time here should be sent in UTC, which this doesn't do. Somewhere the time zone and DST flags probably need
+            // to be embedded
+            $reply .= chr(bin2bcd(date('h', $dateint))) . chr(bin2bcd(date('i', $dateint))) . chr(bin2bcd(date('s', $dateint)));    // Server hour, min and second in BCD format
+            $reply .= chr(bin2bcd(date('d', $dateint))) . chr(bin2bcd(date('m', $dateint))) . chr(bin2bcd(date('y', $dateint)));   // Day Month and Year in BCD format
+            $reply .= chr(0x53);                                                                // unknown Server DateTime
 
-                        // convert the post data to an ascii representation
-                        $asc_data = bin2hex($postdata);
+            $reply .= chr(0x7);                                        // Unknown
+            $reply .= chr(0x5);                                       // LCD brightness this value+1 = value on display settings
+            $reply .= chr(0x0) . chr(0x0);                                // (word) beep weather station on this packet reply on internet update >0, nobeep=0 (?what else)
+            $reply .= chr(0x0);                                        // Unknown
+            $reply .= chr(0x07);                                        // Unknown (is 0x7 on lacrosse alerts)
+            // Checksum
+            $reply = $reply . chr(checksum8($reply));
+        }
 
-                        // Get the serial number from the request data
-                        $serial_number = substr($postdata, 0, 8);
+    }
+    else if (("00" == $id1) && ("14" == $id2))
+    {
+        // Got this right after the 7F:10, send 14 bytes of data, I think this reply is needed to "seal the deal" on registration
+        $postdata = file_get_contents("php://input");
+        write_dump_log($postdata, "00:14");
 
-                        // Check if this is the default serial number
-                        if (0 == strcmp($serial_number, pack("H*", "0102030405060708")))
-                        {
-                            // Default Serial Number, refuse it OR check if we need to match it and set a new serialnumber
-                            // we should set a new serial number only if the user wants one, really though it should be done
-                            // by lacrosse alerts.
-                            $do_reply = 0;
-                            if ($register_this_serial)
-                            {
-                                // Do you really want to do this?
-                                //$do_reply=1;
-                            }
+        header('HTTP_FLAGS: 1C:00');
+        $reply = "";
+    }
+    else if (("01" == $id1) && ("14" == $id2))
+    {
+        // This sends 14 bytes of data with no reply, the data is the new serial number in the same format as 7F:10 except for one
+        // extra byte on end
+        $postdata = file_get_contents("php://input");
+        write_dump_log($postdata, "01:14");
 
-                        }
-                        else
-                        {
-                            if (0 == strcmp($serial_number, $station_serial))
-                            {
-                                // For now do not reply unless it is the one we are interested in
-                                $do_reply = 1;
-                            }
-                            else
-                            {
-                                $do_reply = 0;
-                            }
-                        }
+        header('HTTP_FLAGS: 1C:00');
+        $reply = "";
+    }
+    else if (("01" == $id1) && ("00" == $id2))
+    {
+        // Weather Station Ping Packet, reply to this packet keeps the Weather Station Happy and time Synced.
+        //
+        // This sends 5 bytes of data, and is responded to by 38 bytes of data, we do not do anything with the 5 bytes of data
+        // The weather station sends
+        //
+        $postdata = file_get_contents("php://input");
+        write_dump_log($postdata, "01:00");
 
-                        if ($do_reply)
-                        {
-                            // Reply with 14:00 and 38 bytes of data.  This data is likely configuatio of the WS
-                            header('HTTP_FLAGS: 14:00');
-                            //
-                            // Important, the reply packet 14:00 can set the serial number of the weather station if the weather station has
-                            // default serial number, ie 01 02 03 04 05 06 07 08.  It doesn't seem to be resettable after it has been changed
-                            // the first time, so it might be advisable to register with the Lacrosse server first to get a good serial number
-                            // written, so if you ever wanted to go back to lacrosse service you could.
-                            //
-                            // If the device has a serial number, then it must match below or this packet is ignored.  The same holds true
-                            // for below, if you don't populate the correct serial number then the internet display on the weather station
-                            // will not light.
-                            //
-                            //
-                            $reply = "";
-                            $reply .= chr(1);                                                             // Seems to be always 1
-                            // if we have a valid serial number in the request, stuff it here:
-                            $reply .= $station_serial;
-                            //$reply.=chr(0x7f).chr(0xff);												// All serial nubers begin with this
-                            //$reply.=chr(0x0).chr(0x0).chr(0x00).chr(0x00).chr(0x00).chr(0x00);		// Serial number, changable part 6 bytes, this is set above
-                            $reply .= chr(0) . chr(0x30) . chr(0) . chr(0xf) . chr(0x00) . chr(0x0) . chr(0x00);    // ?
-                            $reply .= chr(0xf) . chr(0) . chr(0x0) . chr(0) . chr(0x77) . chr(0x0);                // ?
+        /*  From Skydiver:
+        TSend0100Packet = PACKED RECORD
+            Payload:  TTrippleByte; // unknown
+            Checksum: Word;
+        END;
+        */
+        header('HTTP_FLAGS: 14:01');
+        $reply = "";
+        //
+        // Reply should be same as above 38 byte packet
+        //
+        $reply = "";
+        $reply .= chr(1);
+        // You should hard code your serial number here, or if the server handles multiple weather stations, use a
+        // MAC ($mac) to serial number translater lookup so you can reply with the correct serial number for your weather station
+        // For now just use the hardcode value above. That value is 16 bytes long, from byte 1 through 8
+        $reply .= $station_serial;
+        // Bytes    0x09      0x0a      0x0b      0x0c      0x0d      0x0e      0x0f
+        $reply .= chr(0x00) . chr(0x32) . chr(0x00) . chr(0x0b) . chr(0x00) . chr(0x00) . chr(0x00);    // ?
+        // Bytes    0x10      0x11      0x12      0x13      0x14      0x15
+        $reply .= chr(0x0f) . chr(0x00) . chr(0x00) . chr(0x00) . chr(0x03) . chr(0x00);                // ?
+        // Bytes    0x16      0x17
+        $reply .= chr(0x3e) . chr(0xde);                                          // Skydiver calls this Ephoch, I do nothing here
 
-                            $reply .= chr(0xe) . chr(0xff);                                          // Skydiver calls this Ephoch, I do nothing here
+        $dateint = time(); // Grab the Unix date/time, so there is no possibility of overflow causing an erroneous part of the date/time
+        $reply .= chr(bin2bcd(date('h', $dateint))) . chr(bin2bcd(date('i', $dateint))) . chr(bin2bcd(date('s', $dateint)));    // Server hour, min and second in BCD format
+        $reply .= chr(bin2bcd(date('d', $dateint))) . chr(bin2bcd(date('m', $dateint))) . chr(bin2bcd(date('y', $dateint)));   // Day Month and Year in BCD format
+        // The date is 6 bytes, so the next one is 0x1e
+        $reply .= chr(0x53);                                                                // unknown Server DateTime
 
-                            $dateint = time(); // Grab the Unix date/time atomically, so there is no possibility of date/time field overflow causing errors
-                            // The time here should be sent in UTC, which this doesn't do. Somewhere the time zone and DST flags probably need
-                            // to be embedded
-                            $reply .= chr(bin2bcd(date('h', $dateint))) . chr(bin2bcd(date('i', $dateint))) . chr(bin2bcd(date('s', $dateint)));    // Server hour, min and second in BCD format
-                            $reply .= chr(bin2bcd(date('d', $dateint))) . chr(bin2bcd(date('m', $dateint))) . chr(bin2bcd(date('y', $dateint)));   // Day Month and Year in BCD format
-                            $reply .= chr(0x53);                                                                // unknown Server DateTime
+        $reply .= chr(0x07);                                        // Byte 0x1f  Unknown
+        $reply .= chr(0x04);                                        // Byte 0x20 LCD brightness this value+1 = value on display settings
+        $reply .= chr(0x00) . chr(0x00);                                // Byte 0x21 & 0x22 (word) beep weather station on this packet reply on internet update >0, nobeep=0 (?what else)
+        $reply .= chr(0x00);                                        // Byte 0x23 Unknown
 
-                            $reply .= chr(0x7);                                        // Unknown
-                            $reply .= chr(0x5);                                       // LCD brightness this value+1 = value on display settings
-                            $reply .= chr(0x0) . chr(0x0);                                // (word) beep weather station on this packet reply on internet update >0, nobeep=0 (?what else)
-                            $reply .= chr(0x0);                                        // Unknown
-                            $reply .= chr(0x07);                                        // Unknown (is 0x7 on lacrosse alerts)
-                            // Checksum
-                            $reply = $reply . chr(checksum8($reply));
-                        }
+        //$reply.=chr(0x07);										// Unknown (is 0x7 on lacrosse alerts)
+        //$reply=$reply.chr(checksum8($reply));
+        // End the packet with a big-endian 2-byte sum of the previous bytes, with an offset of 7
+        $csum = checksum16($reply) + 7;
+        $reply .= chr($csum >> 8) . chr($csum & 0xff);
+        write_dump_log($reply, "14:01");
+    }
+    else if (("01" == $id1) && ("01" == $id2))
+    {
+        // This packet should contain 197 bytes of data (ive also seen 102 bytes of data, but I think it should always bee 197 bytes of data).
+        // This is the sensor data we should decode, use skydivers data to decode it and log to a database/mrtg/etc...
+        $postdata = file_get_contents("php://input");
 
-                    }
-                    else
-                    {
-                        if (("00" == $id1) && ("14" == $id2))
-                        {
-                            // Got this right after the 7F:10, send 14 bytes of data, I think this reply is needed to "seal the deal" on registration
-                            $postdata = file_get_contents("php://input");
-                            write_dump_log($postdata, "00:14");
+        // At this point we only know how to decode this packet if it is 197 bytes, although I've seen other sizes, but it might be corrupt wireless
+        // so don't do anything unless 197 bytes.  It does seem like 210 byte packets are common, but I have not captured these from
+        // Lacrosse alerts site.
+        //
+        // 197 byte packets start with : 01 64 14 12 01 40 30 40 63
+        // 210 byte packets start with : 21 64 14 0b 07 1c 02 66 00
+        //  30 byte packets start with : 21 64 10 01 07 1c 07
+        if (197 == strlen($postdata))
+        {
+            // Convert the post data to an array of nybbles
+            $nybs = post2nyb($postdata);
 
-                            header('HTTP_FLAGS: 1C:00');
-                            $reply = "";
-                        }
-                        else
-                        {
-                            if (("01" == $id1) && ("14" == $id2))
-                            {
-                                // This sends 14 bytes of data with no reply, the data is the new serial number in the same format as 7F:10 except for one
-                                // extra byte on end
-                                $postdata = file_get_contents("php://input");
-                                write_dump_log($postdata, "01:14");
+            //
+            // Send to weather underground  (must have parameters set up top)
+            //
+            WU_put(assembleWUData($nybs, $wug_send_indoor_values));
 
-                                header('HTTP_FLAGS: 1C:00');
-                                $reply = "";
-                            }
-                            else
-                            {
-                                if (("01" == $id1) && ("00" == $id2))
-                                {
-                                    // Weather Station Ping Packet, reply to this packet keeps the Weather Station Happy and time Synced.
-                                    //
-                                    // This sends 5 bytes of data, and is responded to by 38 bytes of data, we do not do anything with the 5 bytes of data
-                                    // The weather station sends
-                                    //
-                                    $postdata = file_get_contents("php://input");
-                                    write_dump_log($postdata, "01:00");
+            write_data_log(assembleLogData($nybs, $postdata));
 
-                                    /*  From Skydiver:
-                                    TSend0100Packet = PACKED RECORD
-                                        Payload:  TTrippleByte; // unknown
-                                        Checksum: Word;
-                                    END;
-                                    */
-                                    header('HTTP_FLAGS: 14:01');
-                                    $reply = "";
-                                    //
-                                    // Reply should be same as above 38 byte packet
-                                    //
-                                    $reply = "";
-                                    $reply .= chr(1);
-                                    // You should hard code your serial number here, or if the server handles multiple weather stations, use a
-                                    // MAC ($mac) to serial number translater lookup so you can reply with the correct serial number for your weather station
-                                    // For now just use the hardcode value above. That value is 16 bytes long, from byte 1 through 8
-                                    $reply .= $station_serial;
-                                    // Bytes    0x09      0x0a      0x0b      0x0c      0x0d      0x0e      0x0f
-                                    $reply .= chr(0x00) . chr(0x32) . chr(0x00) . chr(0x0b) . chr(0x00) . chr(0x00) . chr(0x00);    // ?
-                                    // Bytes    0x10      0x11      0x12      0x13      0x14      0x15
-                                    $reply .= chr(0x0f) . chr(0x00) . chr(0x00) . chr(0x00) . chr(0x03) . chr(0x00);                // ?
-                                    // Bytes    0x16      0x17
-                                    $reply .= chr(0x3e) . chr(0xde);                                          // Skydiver calls this Ephoch, I do nothing here
-
-                                    $dateint = time(); // Grab the Unix date/time, so there is no possibility of overflow causing an erroneous part of the date/time
-                                    $reply .= chr(bin2bcd(date('h', $dateint))) . chr(bin2bcd(date('i', $dateint))) . chr(bin2bcd(date('s', $dateint)));    // Server hour, min and second in BCD format
-                                    $reply .= chr(bin2bcd(date('d', $dateint))) . chr(bin2bcd(date('m', $dateint))) . chr(bin2bcd(date('y', $dateint)));   // Day Month and Year in BCD format
-                                    // The date is 6 bytes, so the next one is 0x1e
-                                    $reply .= chr(0x53);                                                                // unknown Server DateTime
-
-                                    $reply .= chr(0x07);                                        // Byte 0x1f  Unknown
-                                    $reply .= chr(0x04);                                        // Byte 0x20 LCD brightness this value+1 = value on display settings
-                                    $reply .= chr(0x00) . chr(0x00);                                // Byte 0x21 & 0x22 (word) beep weather station on this packet reply on internet update >0, nobeep=0 (?what else)
-                                    $reply .= chr(0x00);                                        // Byte 0x23 Unknown
-
-                                    //$reply.=chr(0x07);										// Unknown (is 0x7 on lacrosse alerts)
-                                    //$reply=$reply.chr(checksum8($reply));
-                                    // End the packet with a big-endian 2-byte sum of the previous bytes, with an offset of 7
-                                    $csum = checksum16($reply) + 7;
-                                    $reply .= chr($csum >> 8) . chr($csum & 0xff);
-                                    write_dump_log($reply, "14:01");
-                                }
-                                else
-                                {
-                                    if (("01" == $id1) && ("01" == $id2))
-                                    {
-                                        // This packet should contain 197 bytes of data (ive also seen 102 bytes of data, but I think it should always bee 197 bytes of data).
-                                        // This is the sensor data we should decode, use skydivers data to decode it and log to a database/mrtg/etc...
-                                        $postdata = file_get_contents("php://input");
-
-                                        // At this point we only know how to decode this packet if it is 197 bytes, although I've seen other sizes, but it might be corrupt wireless
-                                        // so don't do anything unless 197 bytes.  It does seem like 210 byte packets are common, but I have not captured these from
-                                        // Lacrosse alerts site.
-                                        //
-                                        // 197 byte packets start with : 01 64 14 12 01 40 30 40 63
-                                        // 210 byte packets start with : 21 64 14 0b 07 1c 02 66 00
-                                        //  30 byte packets start with : 21 64 10 01 07 1c 07
-                                        if (197 == strlen($postdata))
-                                        {
-                                            // Convert the post data to an array of nybbles
-                                            $nybs = post2nyb($postdata);
-
-                                            //
-                                            // Send to weather underground  (must have parameters set up top)
-                                            //
-                                            WU_put(assembleWUData($nybs, $wug_send_indoor_values));
-
-                                            write_data_log(assembleLogData($nybs, $postdata));
-
-                                            // Log a hex dump of
-                                            write_dump_log($postdata, "01:01");
-                                            // Write the post data to a file, for possible later analysis.
-                                            //  The post data doesn't include a time stamp, so we prepend a
-                                            //  4-byte unix time stamp to each record when it's written. Each
-                                            //  record will be 201 bytes..
-                                            $packtime = pack("l", time());
-                                            // For now, down't include the time...
-                                            if ($debug_packets)
-                                            {
-                                                file_put_contents("postdata197.bin", $packtime . $postdata, FILE_APPEND);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // Log other lengths of postdata too
-                                            //write_dump_log($postdata,"01:01");
-                                            // And write a binary file of the data, named according to postdata length
-                                            $filename = "postdata" . sprintf("%d", strlen($postdata)) . ".bin";
-                                            $packtime = pack("l", time());
-                                            if ($debug_packets)
-                                            {
-                                                file_put_contents($filename, $packtime . $postdata, FILE_APPEND);
-                                            }
-                                            # For the 210-byte (data history?) packets, don't reply with the content-type header
-                                            if (strlen($postdata) == 210)
-                                            {
-                                                $http_send_ctype = false;
-                                            }
-                                        }
-
-                                        // Reply with 00:00 no data
-                                        header('HTTP_FLAGS: 00:00');
-                                        $reply = "";
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            // Log a hex dump of
+            write_dump_log($postdata, "01:01");
+            // Write the post data to a file, for possible later analysis.
+            //  The post data doesn't include a time stamp, so we prepend a
+            //  4-byte unix time stamp to each record when it's written. Each
+            //  record will be 201 bytes..
+            $packtime = pack("l", time());
+            // For now, down't include the time...
+            if ($debug_packets)
+            {
+                file_put_contents("postdata197.bin", $packtime . $postdata, FILE_APPEND);
             }
         }
     }
+    else
+    {
+        // Log other lengths of postdata too
+        //write_dump_log($postdata,"01:01");
+        // And write a binary file of the data, named according to postdata length
+        $filename = "postdata" . sprintf("%d", strlen($postdata)) . ".bin";
+        $packtime = pack("l", time());
+        if ($debug_packets)
+        {
+            file_put_contents($filename, $packtime . $postdata, FILE_APPEND);
+        }
+        # For the 210-byte (data history?) packets, don't reply with the content-type header
+        if (strlen($postdata) == 210)
+        {
+            $http_send_ctype = false;
+        }
+    }
 
+    // Reply with 00:00 no data
+    header('HTTP_FLAGS: 00:00');
+    $reply = "";
 
     //-----------------------------
     //All output created here
